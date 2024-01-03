@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.4.12", features = ["derive"] }
-ureq = "2.9.1"
 bili-api-rs = { version = "0.1.0", git = "https://github.com/YangchenYe323/bili-api-rs.git"}
 serde_json = "1.0.109"
+reqwest = { version = "0.11.23", features = ["blocking"] }

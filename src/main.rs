@@ -60,7 +60,7 @@ impl Cookie {
 
 fn get_all_unlighted_medals(cookie_str: &str) -> Vec<MedalItem> {
     let mut medals = vec![];
-    let agent = ureq::Agent::new();
+    let agent = reqwest::blocking::Client::new();
     let mut cur_page = 1;
     let mut total_page = 10;
     while cur_page <= total_page {
@@ -95,7 +95,7 @@ fn get_all_unlighted_medals(cookie_str: &str) -> Vec<MedalItem> {
 }
 
 fn light_medals(cookie: &Cookie, cookie_str: &str, msg: &str, medals: &[MedalItem]) {
-    let agent = ureq::Agent::new();
+    let agent = reqwest::blocking::Client::new();
     for medal in medals {
         println!("正在点亮灯牌 [{}]...", &medal.medal_name);
         let room = medal.roomid;

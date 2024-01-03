@@ -63,7 +63,7 @@ fn get_all_unlighted_medals(cookie_str: &str) -> Vec<MedalItem> {
     let agent = ureq::Agent::new();
     let mut cur_page = 1;
     let mut total_page = 10;
-    while cur_page < total_page {
+    while cur_page <= total_page {
         let response =
             bili_api_rs::apis::live::user::get_medal_for_user(&agent, 10, cur_page, cookie_str)
                 .expect("Failed to fetch user medal");
@@ -110,7 +110,7 @@ fn light_medals(cookie: &Cookie, cookie_str: &str, msg: &str, medals: &[MedalIte
             &cookie.bili_jct,
             cookie_str,
         ) {
-            Ok(r) => (),
+            Ok(_) => (),
             Err(e) => {
                 println!("点亮 [{}] 失败: {}", &medal.medal_name, e);
             }

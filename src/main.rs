@@ -1,7 +1,7 @@
 use std::{path::Path, time::Duration};
 
 use bili_api_rs::{
-    apis::live::user::{GetInfoByUserResponse, GetMedalForUserResponse, MedalItem},
+    apis::live::user::{GetMedalForUserResponse, MedalItem},
     credential::Credential,
 };
 use clap::Parser;
@@ -9,11 +9,14 @@ use cli::Cli;
 
 mod cli;
 
+// 多个打卡消息绕过可能的屏蔽词导致弹幕发送失败
+const MSGS: [&str; 5] = ["打卡", "OvO", "( •́ .̫ •̀ )", "Check", "你好"];
+
 fn main() {
-    let Cli { cookie, msg } = Cli::parse();
+    let Cli { cookie } = Cli::parse();
     let cookie = read_cred_from_file(cookie.as_path());
     let medals = get_all_unlighted_medals(&cookie);
-    light_medals(&cookie, &msg, &medals);
+    light_medals(&cookie, &medals);
 }
 
 fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
@@ -87,56 +90,57 @@ fn get_all_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
     medals
 }
 
-fn light_medals(cookie: &Credential, msg: &str, medals: &[MedalItem]) {
+fn light_medals(cookie: &Credential, medals: &[MedalItem]) {
     let agent = reqwest::blocking::Client::new();
     for medal in medals {
         println!("正在点亮灯牌 [{}]...", &medal.medal_name);
         let room = medal.roomid;
-        let data = match bili_api_rs::apis::live::user::get_live_info_by_user(&agent, room, cookie)
-        {
-            Ok(GetInfoByUserResponse::Success {
-                code: _,
-                ttl: _,
-                data,
-            }) => data,
-            Ok(GetInfoByUserResponse::Failure {
-                code: _,
-                ttl: _,
-                message,
-            }) => {
-                println!(
-                    "无法获取主播 [{}] 直播间弹幕信息 (错误信息: {})，跳过...",
-                    &medal.target_name, &message
-                );
-                continue;
-            }
-            Err(e) => {
-                println!(
-                    "无法获取主播 [{}] 直播间弹幕信息 (错误信息: {})，跳过...",
-                    &medal.target_name, e
-                );
-                continue;
-            }
-        };
-
-        match bili_api_rs::apis::live::msg::send_live_message(
-            &agent,
-            room,
-            msg,
-            data.property.danmu.color,
-            25,
-            data.property.danmu.mode,
-            data.property.bubble,
-            cookie,
-        ) {
-            Ok(r) => {
-                println!("{:?}", r);
-            }
-            Err(e) => {
-                println!("点亮 [{}] 失败: {}", &medal.medal_name, e);
-            }
+        if !send_message_check_success(&agent, cookie, room) {
+            println!("无法点亮灯牌 [{}], 跳过...", &medal.medal_name);
         }
-
         std::thread::sleep(Duration::from_secs(2));
     }
+}
+
+fn send_message_check_success(
+    agent: &reqwest::blocking::Client,
+    credential: &Credential,
+    room: i32,
+) -> bool {
+    use bili_api_rs::apis::live::msg::SendLiveMessageResponse;
+    const COLOR: i32 = 0xffffff;
+    const FONT_SIZE: i32 = 25;
+    const MODE: i32 = 0;
+    const BUBBLE: i32 = 0;
+
+    for msg in MSGS {
+        let Ok(response) = bili_api_rs::apis::live::msg::send_live_message(
+            agent, room, msg, COLOR, FONT_SIZE, MODE, BUBBLE, credential,
+        ) else {
+          return false;
+        };
+
+        match response {
+            SendLiveMessageResponse::Success {
+                code,
+                message,
+                data: _,
+            } => {
+                if code != 0 {
+                    println!("{}", &message);
+                    return false;
+                }
+                if message.is_empty() {
+                    return true;
+                }
+                // 当前弹幕可能被屏蔽导致弹幕发送失败，尝试其他弹幕组合
+            }
+            SendLiveMessageResponse::Failure { code: _, message } => {
+                println!("{}", &message);
+                return false;
+            }
+        }
+    }
+
+    false
 }

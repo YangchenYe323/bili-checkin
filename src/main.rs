@@ -1,7 +1,7 @@
 use std::{path::Path, time::Duration};
 
 use bili_api_rs::{
-    apis::live::user::{GetMedalForUserResponse, MedalItem},
+    apis::live::user::{GetInfoByUserResponse, GetMedalForUserResponse, MedalItem},
     credential::Credential,
 };
 use clap::Parser;
@@ -92,10 +92,46 @@ fn light_medals(cookie: &Credential, msg: &str, medals: &[MedalItem]) {
     for medal in medals {
         println!("正在点亮灯牌 [{}]...", &medal.medal_name);
         let room = medal.roomid;
+        let data = match bili_api_rs::apis::live::user::get_live_info_by_user(&agent, room, cookie)
+        {
+            Ok(GetInfoByUserResponse::Success {
+                code: _,
+                ttl: _,
+                data,
+            }) => data,
+            Ok(GetInfoByUserResponse::Failure {
+                code: _,
+                ttl: _,
+                message,
+            }) => {
+                println!(
+                    "无法获取主播 [{}] 直播间弹幕信息 (错误信息: {})，跳过...",
+                    &medal.target_name, &message
+                );
+                continue;
+            }
+            Err(e) => {
+                println!(
+                    "无法获取主播 [{}] 直播间弹幕信息 (错误信息: {})，跳过...",
+                    &medal.target_name, e
+                );
+                continue;
+            }
+        };
+
         match bili_api_rs::apis::live::msg::send_live_message(
-            &agent, room, msg, 0xffffff, 25, 1, 1, cookie,
+            &agent,
+            room,
+            msg,
+            data.property.danmu.color,
+            25,
+            data.property.danmu.mode,
+            data.property.bubble,
+            cookie,
         ) {
-            Ok(_) => (),
+            Ok(r) => {
+                println!("{:?}", r);
+            }
             Err(e) => {
                 println!("点亮 [{}] 失败: {}", &medal.medal_name, e);
             }

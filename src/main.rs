@@ -1,25 +1,39 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use bili_api_rs::{
     apis::live::user::{GetMedalForUserResponse, MedalItem},
     credential::Credential,
 };
-use clap::Parser;
-use cli::Cli;
-
-mod cli;
-
 // 多个打卡消息绕过可能的屏蔽词导致弹幕发送失败
 const MSGS: [&str; 5] = ["打卡", "OvO", "( •́ .̫ •̀ )", "Check", "你好"];
 
 fn main() {
-    let Cli { cookie } = Cli::parse();
+    let cookie: PathBuf = std::env::args()
+        .nth(1)
+        .expect("usage: bili-check <cookie file path>")
+        .into();
     let cookie = read_cred_from_file(cookie.as_path());
     let medals = get_unlighted_medals(&cookie);
-    println!("总共 {} 个粉丝牌: ", medals.len());
+    println!("总共 {} 个未点亮粉丝牌粉丝牌: ", medals.len());
     light_medals(&cookie, &medals);
 }
 
+/// Credential file json format:
+/// {
+///   cookie_info: {
+///     cookies: [
+///       {
+///         name,
+///         value
+///       },
+///       ...
+///     ]
+///   }
+/// }
+/// I used [biliup-rs](https://github.com/biliup/biliup-rs)'s login utility to generate the file.
 fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     let file = std::fs::File::open(path.as_ref()).expect("Cannot open cookie file");
     let value: serde_json::Value = serde_json::from_reader(file).expect("Malformed cookie file");
@@ -61,26 +75,25 @@ fn get_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
     let mut cur_page = 1;
     let mut total_page = 10;
     while cur_page <= total_page {
-        let response =
-            bili_api_rs::apis::live::user::get_medal_for_user(&agent, 10, cur_page, cookie)
-                .expect("Failed to fetch user medal");
-        match response {
-            GetMedalForUserResponse::Success {
+        match bili_api_rs::apis::live::user::get_medal_for_user(&agent, 10, cur_page, cookie) {
+            Ok(GetMedalForUserResponse::Success {
                 code: _,
                 data,
                 ttl: _,
-            } => {
+            }) => {
                 total_page = data.page_info.total_page;
                 cur_page = data.page_info.cur_page + 1;
                 medals.extend(data.items.into_iter().filter(|item| item.is_lighted == 0));
             }
-
-            GetMedalForUserResponse::Failure {
+            Ok(GetMedalForUserResponse::Failure {
                 code: _,
                 message,
                 ttl: _,
-            } => {
-                panic!("请求用户粉丝牌失败: {}", message)
+            }) => {
+                panic!("请求用户粉丝牌失败: {}", message);
+            }
+            Err(e) => {
+                panic!("请求用户粉丝牌失败: {}", e);
             }
         }
     }

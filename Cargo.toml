@@ -6,7 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.4.12", features = ["derive"] }
 bili-api-rs = { version = "0.1.0", git = "https://github.com/YangchenYe323/bili-api-rs.git"}
 serde_json = "1.0.109"
 reqwest = { version = "0.11.23", features = ["blocking"] }
+
+# Just for fun
+[profile.release]
+strip = true
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

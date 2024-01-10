@@ -15,7 +15,7 @@ const MSGS: [&str; 5] = ["打卡", "OvO", "( •́ .̫ •̀ )", "Check", "你�
 fn main() {
     let Cli { cookie } = Cli::parse();
     let cookie = read_cred_from_file(cookie.as_path());
-    let medals = get_all_medals(&cookie);
+    let medals = get_unlighted_medals(&cookie);
     println!("总共 {} 个粉丝牌: ", medals.len());
     light_medals(&cookie, &medals);
 }
@@ -55,7 +55,7 @@ fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     Credential::new(sessdata, bili_jct)
 }
 
-fn get_all_medals(cookie: &Credential) -> Vec<MedalItem> {
+fn get_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
     let mut medals = vec![];
     let agent = reqwest::blocking::Client::new();
     let mut cur_page = 1;
@@ -72,9 +72,7 @@ fn get_all_medals(cookie: &Credential) -> Vec<MedalItem> {
             } => {
                 total_page = data.page_info.total_page;
                 cur_page = data.page_info.cur_page + 1;
-                for item in data.items {
-                    medals.push(item);
-                }
+                medals.extend(data.items.into_iter().filter(|item| item.is_lighted == 0));
             }
 
             GetMedalForUserResponse::Failure {
@@ -92,17 +90,14 @@ fn get_all_medals(cookie: &Credential) -> Vec<MedalItem> {
 fn light_medals(cookie: &Credential, medals: &[MedalItem]) {
     let agent = reqwest::blocking::Client::new();
     for medal in medals {
-        if medal.is_lighted != 0 {
-            println!("[{}]...☑️", &medal.medal_name);
+        println!("[{}]...正在点亮...", &medal.medal_name);
+        let room = medal.roomid;
+        if !send_message_check_success(&agent, cookie, room) {
+            println!("[{}]...无法点亮", &medal.medal_name);
         } else {
-            println!("[{}]...正在点亮...", &medal.medal_name);
-            let room = medal.roomid;
-            if !send_message_check_success(&agent, cookie, room) {
-                println!("[{}]...无法点亮", &medal.medal_name);
-            }
             println!("[{}]...☑️", &medal.medal_name);
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(1000));
     }
 }
 

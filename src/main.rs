@@ -15,7 +15,8 @@ const MSGS: [&str; 5] = ["打卡", "OvO", "( •́ .̫ •̀ )", "Check", "你�
 fn main() {
     let Cli { cookie } = Cli::parse();
     let cookie = read_cred_from_file(cookie.as_path());
-    let medals = get_all_unlighted_medals(&cookie);
+    let medals = get_all_medals(&cookie);
+    println!("总共 {} 个粉丝牌: ", medals.len());
     light_medals(&cookie, &medals);
 }
 
@@ -54,7 +55,7 @@ fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     Credential::new(sessdata, bili_jct)
 }
 
-fn get_all_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
+fn get_all_medals(cookie: &Credential) -> Vec<MedalItem> {
     let mut medals = vec![];
     let agent = reqwest::blocking::Client::new();
     let mut cur_page = 1;
@@ -72,9 +73,7 @@ fn get_all_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
                 total_page = data.page_info.total_page;
                 cur_page = data.page_info.cur_page + 1;
                 for item in data.items {
-                    if item.is_lighted == 0 {
-                        medals.push(item);
-                    }
+                    medals.push(item);
                 }
             }
 
@@ -93,12 +92,17 @@ fn get_all_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
 fn light_medals(cookie: &Credential, medals: &[MedalItem]) {
     let agent = reqwest::blocking::Client::new();
     for medal in medals {
-        println!("正在点亮灯牌 [{}]...", &medal.medal_name);
-        let room = medal.roomid;
-        if !send_message_check_success(&agent, cookie, room) {
-            println!("无法点亮灯牌 [{}], 跳过...", &medal.medal_name);
+        if medal.is_lighted != 0 {
+            println!("[{}]...☑️", &medal.medal_name);
+        } else {
+            println!("[{}]...正在点亮...", &medal.medal_name);
+            let room = medal.roomid;
+            if !send_message_check_success(&agent, cookie, room) {
+                println!("[{}]...无法点亮", &medal.medal_name);
+            }
+            println!("[{}]...☑️", &medal.medal_name);
         }
-        std::thread::sleep(Duration::from_secs(2));
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 
@@ -127,7 +131,7 @@ fn send_message_check_success(
                 data: _,
             } => {
                 if code != 0 {
-                    println!("{}", &message);
+                    println!("  {}", &message);
                     return false;
                 }
                 if message.is_empty() {
@@ -136,7 +140,7 @@ fn send_message_check_success(
                 // 当前弹幕可能被屏蔽导致弹幕发送失败，尝试其他弹幕组合
             }
             SendLiveMessageResponse::Failure { code: _, message } => {
-                println!("{}", &message);
+                println!("  {}", &message);
                 return false;
             }
         }

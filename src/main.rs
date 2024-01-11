@@ -126,18 +126,14 @@ fn send_message_check_success(
     const BUBBLE: i32 = 0;
 
     for msg in MSGS {
-        let Ok(response) = bili_api_rs::apis::live::msg::send_live_message(
+        match bili_api_rs::apis::live::msg::send_live_message(
             agent, room, msg, COLOR, FONT_SIZE, MODE, BUBBLE, credential,
-        ) else {
-          return false;
-        };
-
-        match response {
-            SendLiveMessageResponse::Success {
+        ) {
+            Ok(SendLiveMessageResponse::Success {
                 code,
                 message,
                 data: _,
-            } => {
+            }) => {
                 if code != 0 {
                     println!("  {}", &message);
                     return false;
@@ -147,8 +143,12 @@ fn send_message_check_success(
                 }
                 // 当前弹幕可能被屏蔽导致弹幕发送失败，尝试其他弹幕组合
             }
-            SendLiveMessageResponse::Failure { code: _, message } => {
+            Ok(SendLiveMessageResponse::Failure { code: _, message }) => {
                 println!("  {}", &message);
+                return false;
+            }
+            Err(e) => {
+                println!("  {}", e);
                 return false;
             }
         }

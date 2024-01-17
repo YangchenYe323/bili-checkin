@@ -9,6 +9,7 @@ edition = "2021"
 bili-api-rs = { version = "0.1.0", git = "https://github.com/YangchenYe323/bili-api-rs.git"}
 serde_json = "1.0.109"
 reqwest = { version = "0.11.23", features = ["blocking"] }
+procspawn = "1.0.0"
 
 # Just for fun
 [profile.release]

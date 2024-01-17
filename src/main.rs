@@ -8,17 +8,23 @@ use bili_api_rs::{
     credential::Credential,
 };
 // 多个打卡消息绕过可能的屏蔽词导致弹幕发送失败
-const MSGS: [&str; 5] = ["打卡", "OvO", "( •́ .̫ •̀ )", "Check", "你好"];
+const MSGS: [&str; 5] = ["OvO", "( •́ .̫ •̀ )", "Check", "你好", "打卡"];
 
 fn main() {
     let cookie: PathBuf = std::env::args()
         .nth(1)
         .expect("usage: bili-check <cookie file path>")
         .into();
+    let agent = reqwest::blocking::Client::new();
     let cookie = read_cred_from_file(cookie.as_path());
-    let medals = get_unlighted_medals(&cookie);
+    let medals = get_unlighted_medals(&agent, &cookie);
     println!("总共 {} 个未点亮粉丝牌粉丝牌: ", medals.len());
-    light_medals(&cookie, &medals);
+    // TODO: There's a wierd issue where directly calling send message after
+    // getting unlighted medal will result in some message not being sent. Directly
+    // sending message without the API call works fine. Try throttling the API calls
+    // to see if it solves the issue.
+    std::thread::sleep(Duration::from_millis(500));
+    light_medals(&agent, &cookie, &medals);
 }
 
 /// Credential file json format:
@@ -69,9 +75,8 @@ fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     Credential::new(sessdata, bili_jct)
 }
 
-fn get_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
+fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) -> Vec<MedalItem> {
     let mut medals = vec![];
-    let agent = reqwest::blocking::Client::new();
     let mut cur_page = 1;
     let mut total_page = 10;
     while cur_page <= total_page {
@@ -96,20 +101,22 @@ fn get_unlighted_medals(cookie: &Credential) -> Vec<MedalItem> {
                 panic!("请求用户粉丝牌失败: {}", e);
             }
         }
+        std::thread::sleep(Duration::from_millis(500));
     }
     medals
 }
 
-fn light_medals(cookie: &Credential, medals: &[MedalItem]) {
-    let agent = reqwest::blocking::Client::new();
+fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: &[MedalItem]) {
     for medal in medals {
         println!("[{}]...正在点亮...", &medal.medal_name);
-        let room = medal.roomid;
-        if !send_message_check_success(&agent, cookie, room) {
-            println!("[{}]...无法点亮", &medal.medal_name);
-        } else {
-            println!("[{}]...☑️", &medal.medal_name);
-        }
+        match send_message_check_success(agent, cookie, medal.roomid) {
+            true => {
+                println!("[{}]...☑️", &medal.medal_name);
+            }
+            false => {
+                println!("[{}]...无法点亮", &medal.medal_name);
+            }
+        };
         std::thread::sleep(Duration::from_millis(1000));
     }
 }
@@ -132,16 +139,18 @@ fn send_message_check_success(
             Ok(SendLiveMessageResponse::Success {
                 code,
                 message,
-                data: _,
+                data,
             }) => {
                 if code != 0 {
                     println!("  {}", &message);
                     return false;
                 }
                 if message.is_empty() {
+                    println!("{:?}", data);
                     return true;
                 }
                 // 当前弹幕可能被屏蔽导致弹幕发送失败，尝试其他弹幕组合
+                std::thread::sleep(Duration::from_millis(1000));
             }
             Ok(SendLiveMessageResponse::Failure { code: _, message }) => {
                 println!("  {}", &message);

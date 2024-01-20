@@ -4,9 +4,14 @@ use std::{
 };
 
 use bili_api_rs::{
-    apis::live::user::{GetMedalForUserResponse, MedalItem},
+    apis::live::{
+        msg::LiveMessageConfig,
+        user::{GetMedalForUserResponse, MedalItem},
+    },
     credential::Credential,
+    Error,
 };
+
 // 多个打卡消息绕过可能的屏蔽词导致弹幕发送失败
 const MSGS: [&str; 5] = ["OvO", "( •́ .̫ •̀ )", "Check", "你好", "打卡"];
 
@@ -81,21 +86,10 @@ fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) 
     let mut total_page = 10;
     while cur_page <= total_page {
         match bili_api_rs::apis::live::user::get_medal_for_user(&agent, 10, cur_page, cookie) {
-            Ok(GetMedalForUserResponse::Success {
-                code: _,
-                data,
-                ttl: _,
-            }) => {
+            Ok(GetMedalForUserResponse { data }) => {
                 total_page = data.page_info.total_page;
                 cur_page = data.page_info.cur_page + 1;
                 medals.extend(data.items.into_iter().filter(|item| item.is_lighted == 0));
-            }
-            Ok(GetMedalForUserResponse::Failure {
-                code: _,
-                message,
-                ttl: _,
-            }) => {
-                panic!("请求用户粉丝牌失败: {}", message);
             }
             Err(e) => {
                 panic!("请求用户粉丝牌失败: {}", e);
@@ -126,39 +120,23 @@ fn send_message_check_success(
     credential: &Credential,
     room: i32,
 ) -> bool {
-    use bili_api_rs::apis::live::msg::SendLiveMessageResponse;
-    const COLOR: i32 = 0xffffff;
-    const FONT_SIZE: i32 = 25;
-    const MODE: i32 = 0;
-    const BUBBLE: i32 = 0;
-
     for msg in MSGS {
-        match bili_api_rs::apis::live::msg::send_live_message(
-            agent, room, msg, COLOR, FONT_SIZE, MODE, BUBBLE, credential,
-        ) {
-            Ok(SendLiveMessageResponse::Success {
-                code,
-                message,
-                data,
-            }) => {
-                if code != 0 {
-                    println!("  {}", &message);
-                    return false;
-                }
-                if message.is_empty() {
-                    println!("{:?}", data);
-                    return true;
-                }
-                // 当前弹幕可能被屏蔽导致弹幕发送失败，尝试其他弹幕组合
-                std::thread::sleep(Duration::from_millis(1000));
-            }
-            Ok(SendLiveMessageResponse::Failure { code: _, message }) => {
-                println!("  {}", &message);
-                return false;
+        let config = LiveMessageConfig::with_roomid_and_msg(room, msg.to_string());
+        match bili_api_rs::apis::live::msg::send_live_message(agent, config, credential) {
+            Ok(_) => {
+                return true;
             }
             Err(e) => {
-                println!("  {}", e);
-                return false;
+                match e {
+                    Error::Api(err) if err.code() == 0 => {
+                        // 我们的弹幕可能包含屏蔽词，尝试其他弹幕组合
+                        std::thread::sleep(Duration::from_millis(1000));
+                    }
+                    e => {
+                        println!("  发送弹幕失败: {}", e);
+                        return false;
+                    }
+                }
             }
         }
     }

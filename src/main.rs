@@ -4,10 +4,7 @@ use std::{
 };
 
 use bili_api_rs::{
-    apis::live::{
-        msg::LiveMessageConfig,
-        user::{GetMedalForUserResponse, MedalItem},
-    },
+    apis::live::{info, msg, user},
     credential::Credential,
     Error,
 };
@@ -75,13 +72,16 @@ fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     Credential::new(sessdata, bili_jct)
 }
 
-fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) -> Vec<MedalItem> {
+fn get_unlighted_medals(
+    agent: &reqwest::blocking::Client,
+    cookie: &Credential,
+) -> Vec<user::MedalItem> {
     let mut medals = vec![];
     let mut cur_page = 1;
     let mut total_page = 10;
     while cur_page <= total_page {
-        match bili_api_rs::apis::live::user::get_medal_for_user(&agent, 10, cur_page, cookie) {
-            Ok(GetMedalForUserResponse { data }) => {
+        match user::get_medal_for_user(agent, 10, cur_page, cookie) {
+            Ok(user::GetMedalForUserResponse { data }) => {
                 total_page = data.page_info.total_page;
                 cur_page = data.page_info.cur_page + 1;
                 medals.extend(data.items.into_iter().filter(|item| item.is_lighted == 0));
@@ -94,10 +94,14 @@ fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) 
     medals
 }
 
-fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: &[MedalItem]) {
+fn light_medals(
+    agent: &reqwest::blocking::Client,
+    cookie: &Credential,
+    medals: &[user::MedalItem],
+) {
     for medal in medals {
         println!("[{}]...正在点亮...", &medal.medal_name);
-        match send_message_check_success(agent, cookie, &medal) {
+        match send_message_check_success(agent, cookie, medal) {
             true => {
                 println!("[{}]...☑️", &medal.medal_name);
             }
@@ -113,15 +117,14 @@ fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: 
 fn send_message_check_success(
     agent: &reqwest::blocking::Client,
     credential: &Credential,
-    medal: &MedalItem,
+    medal: &user::MedalItem,
 ) -> bool {
-    use bili_api_rs::apis::live::{info, msg, user};
     // 有时候MedalItem里的roomid是short id，确保使用original id来发送弹幕
     let room_info = info::get_live_room_info(agent, medal.roomid).expect("无法获取直播间信息");
     let room_id = room_info.data.room_id;
 
     for msg in MSGS {
-        let config = LiveMessageConfig::with_roomid_and_msg(room_id, msg.to_string());
+        let config = msg::LiveMessageConfig::with_roomid_and_msg(room_id, msg.to_string());
         match msg::send_live_message(agent, config, credential) {
             Ok(_r) => {
                 return true;

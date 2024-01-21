@@ -24,11 +24,6 @@ fn main() {
     let cookie = read_cred_from_file(cookie.as_path());
     let medals = get_unlighted_medals(&agent, &cookie);
     println!("总共 {} 个未点亮粉丝牌粉丝牌: ", medals.len());
-    // TODO: There's a wierd issue where directly calling send message after
-    // getting unlighted medal will result in some message not being sent. Directly
-    // sending message without the API call works fine. Try throttling the API calls
-    // to see if it solves the issue.
-    std::thread::sleep(Duration::from_millis(500));
     light_medals(&agent, &cookie, &medals);
 }
 
@@ -95,7 +90,6 @@ fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) 
                 panic!("请求用户粉丝牌失败: {}", e);
             }
         }
-        std::thread::sleep(Duration::from_millis(500));
     }
     medals
 }
@@ -103,7 +97,7 @@ fn get_unlighted_medals(agent: &reqwest::blocking::Client, cookie: &Credential) 
 fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: &[MedalItem]) {
     for medal in medals {
         println!("[{}]...正在点亮...", &medal.medal_name);
-        match send_message_check_success(agent, cookie, medal.roomid) {
+        match send_message_check_success(agent, cookie, &medal) {
             true => {
                 println!("[{}]...☑️", &medal.medal_name);
             }
@@ -111,6 +105,7 @@ fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: 
                 println!("[{}]...无法点亮", &medal.medal_name);
             }
         };
+        // 避免发送弹幕过快
         std::thread::sleep(Duration::from_millis(1000));
     }
 }
@@ -118,19 +113,39 @@ fn light_medals(agent: &reqwest::blocking::Client, cookie: &Credential, medals: 
 fn send_message_check_success(
     agent: &reqwest::blocking::Client,
     credential: &Credential,
-    room: i32,
+    medal: &MedalItem,
 ) -> bool {
+    use bili_api_rs::apis::live::{info, msg, user};
+    // 有时候MedalItem里的roomid是short id，确保使用original id来发送弹幕
+    let room_info = info::get_live_room_info(agent, medal.roomid).expect("无法获取直播间信息");
+    let room_id = room_info.data.room_id;
+
     for msg in MSGS {
-        let config = LiveMessageConfig::with_roomid_and_msg(room, msg.to_string());
-        match bili_api_rs::apis::live::msg::send_live_message(agent, config, credential) {
-            Ok(_) => {
+        let config = LiveMessageConfig::with_roomid_and_msg(room_id, msg.to_string());
+        match msg::send_live_message(agent, config, credential) {
+            Ok(_r) => {
                 return true;
             }
             Err(e) => {
+                println!("{}", e);
                 match e {
                     Error::Api(err) if err.code() == 0 => {
                         // 我们的弹幕可能包含屏蔽词，尝试其他弹幕组合
                         std::thread::sleep(Duration::from_millis(1000));
+                    }
+                    Error::Api(err) if err.code() == -403 => {
+                        // 如果当前错误是粉丝牌等级禁言并且我们的勋章等级>=禁言等级，佩戴勋章后重试
+                        if let Some(level) = msg::get_guard_level_threshold(&err) {
+                            if medal.guard_level >= level {
+                                match user::wear_medal(agent, medal.medal_id, credential) {
+                                    Ok(_) => std::thread::sleep(Duration::from_millis(1000)),
+                                    Err(e) => {
+                                        println!("  无法佩戴勋章: {}", e);
+                                        return false;
+                                    }
+                                }
+                            }
+                        }
                     }
                     e => {
                         println!("  发送弹幕失败: {}", e);

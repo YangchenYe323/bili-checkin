@@ -20,7 +20,7 @@ fn main() {
     let agent = reqwest::blocking::Client::new();
     let cookie = read_cred_from_file(cookie.as_path());
     let medals = get_unlighted_medals(&agent, &cookie);
-    println!("总共 {} 个未点亮粉丝牌粉丝牌: ", medals.len());
+    println!("总共 {} 个未点亮粉丝牌: ", medals.len());
     light_medals(&agent, &cookie, &medals);
 }
 

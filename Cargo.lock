@@ -57,7 +57,7 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 [[package]]
 name = "bili-api-rs"
 version = "0.1.0"
-source = "git+https://github.com/YangchenYe323/bili-api-rs.git#5682229bb4ae4cc0282d53239ff717573b709fde"
+source = "git+https://github.com/YangchenYe323/bili-api-rs.git#8b2042ca4adeb390904e41552ac1291c12ea37ee"
 dependencies = [
  "regex",
  "reqwest",

@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::path::{Path, PathBuf};
 
 use bili_api_rs::{
     apis::live::{info, msg, user},
@@ -17,7 +14,7 @@ fn main() {
         .nth(1)
         .expect("usage: bili-check <cookie file path>")
         .into();
-    let agent = reqwest::blocking::Client::new();
+    let agent = bili_api_rs::Client::new();
     let cookie = read_cred_from_file(cookie.as_path());
     let medals = get_unlighted_medals(&agent, &cookie);
     println!("总共 {} 个未点亮粉丝牌: ", medals.len());
@@ -72,10 +69,7 @@ fn read_cred_from_file(path: impl AsRef<Path>) -> Credential {
     Credential::new(sessdata, bili_jct)
 }
 
-fn get_unlighted_medals(
-    agent: &reqwest::blocking::Client,
-    cookie: &Credential,
-) -> Vec<user::MedalItem> {
+fn get_unlighted_medals(agent: &bili_api_rs::Client, cookie: &Credential) -> Vec<user::MedalItem> {
     let mut medals = vec![];
     let mut cur_page = 1;
     let mut total_page = 10;
@@ -94,11 +88,7 @@ fn get_unlighted_medals(
     medals
 }
 
-fn light_medals(
-    agent: &reqwest::blocking::Client,
-    cookie: &Credential,
-    medals: &[user::MedalItem],
-) {
+fn light_medals(agent: &bili_api_rs::Client, cookie: &Credential, medals: &[user::MedalItem]) {
     for medal in medals {
         println!("[{}]...正在点亮...", &medal.medal_name);
         match send_message_check_success(agent, cookie, medal) {
@@ -109,13 +99,11 @@ fn light_medals(
                 println!("[{}]...无法点亮", &medal.medal_name);
             }
         };
-        // 避免发送弹幕过快
-        std::thread::sleep(Duration::from_millis(1000));
     }
 }
 
 fn send_message_check_success(
-    agent: &reqwest::blocking::Client,
+    agent: &bili_api_rs::Client,
     credential: &Credential,
     medal: &user::MedalItem,
 ) -> bool {
@@ -134,14 +122,13 @@ fn send_message_check_success(
                 match e {
                     Error::Api(err) if err.code() == 0 => {
                         // 我们的弹幕可能包含屏蔽词，尝试其他弹幕组合
-                        std::thread::sleep(Duration::from_millis(1000));
                     }
                     Error::Api(err) if err.code() == -403 => {
                         // 如果当前错误是粉丝牌等级禁言并且我们的勋章等级>=禁言等级，佩戴勋章后重试
                         if let Some(level) = msg::get_guard_level_threshold(&err) {
                             if medal.guard_level >= level {
                                 match user::wear_medal(agent, medal.medal_id, credential) {
-                                    Ok(_) => std::thread::sleep(Duration::from_millis(1000)),
+                                    Ok(_) => (),
                                     Err(e) => {
                                         println!("  无法佩戴勋章: {}", e);
                                         return false;

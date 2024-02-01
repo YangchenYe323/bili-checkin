@@ -114,21 +114,22 @@ fn send_message_check_success(
     for msg in MSGS {
         let config = msg::LiveMessageConfig::with_roomid_and_msg(room_id, msg.to_string());
         match msg::send_live_message(agent, config, credential) {
+            Ok(r) if !r.message.is_empty() => {
+                // 我们的弹幕可能包含屏蔽词，尝试其他弹幕组合
+            }
             Ok(_r) => {
                 return true;
             }
             Err(e) => {
-                println!("{}", e);
                 match e {
-                    Error::Api(err) if err.code() == 0 => {
-                        // 我们的弹幕可能包含屏蔽词，尝试其他弹幕组合
-                    }
                     Error::Api(err) if err.code() == -403 => {
                         // 如果当前错误是粉丝牌等级禁言并且我们的勋章等级>=禁言等级，佩戴勋章后重试
                         if let Some(level) = msg::get_guard_level_threshold(&err) {
-                            if medal.guard_level >= level {
+                            if medal.level >= level {
                                 match user::wear_medal(agent, medal.medal_id, credential) {
-                                    Ok(_) => (),
+                                    Ok(r) => {
+                                        println!("{:?}", r);
+                                    }
                                     Err(e) => {
                                         println!("  无法佩戴勋章: {}", e);
                                         return false;
